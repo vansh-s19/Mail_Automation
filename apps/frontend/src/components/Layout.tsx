@@ -18,12 +18,9 @@ export default function Layout() {
     <div className="min-h-screen bg-slate-50">
       <div className="flex">
         <aside className="flex h-screen w-60 flex-col border-r border-slate-200/80 bg-white">
-          <div className="flex items-center gap-2.5 border-b border-slate-200/80 px-5 py-5">
-            <Logo size={32} />
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-slate-900">Unique SPM</div>
-              <div className="text-xs text-slate-400">Outreach Automation</div>
-            </div>
+          <div className="flex flex-col gap-1.5 border-b border-slate-200/80 px-5 py-5">
+            <Logo width={128} />
+            <div className="pl-0.5 text-xs text-slate-400">Outreach Automation</div>
           </div>
           <nav className="flex-1 space-y-0.5 px-3 py-4">
             {navItems.map((item) => {

@@ -44,9 +44,8 @@ export default function Login() {
 
       <div className="relative w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
-          <Logo size={44} />
-          <h1 className="mt-4 text-lg font-semibold tracking-tight text-slate-900">Unique SPM</h1>
-          <p className="text-sm text-slate-500">Outreach Automation</p>
+          <Logo width={180} />
+          <p className="mt-3 text-sm text-slate-500">Outreach Automation</p>
         </div>
 
         <form
