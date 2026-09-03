@@ -10,6 +10,7 @@ datasource db {
 model Contact {
   id                String   @id @default(uuid())
   name              String?
+  title             String?
   company           String?
   phone             String?
   domain            String?
