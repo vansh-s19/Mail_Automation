@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, ApiError, Contact, SyncReport } from "../lib/api";
+import { formatRelativeTime } from "../lib/relativeTime";
+
+const LAST_SYNCED_KEY = "mail_automation_last_synced";
 
 export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -7,6 +10,16 @@ export default function Contacts() {
   const [syncing, setSyncing] = useState(false);
   const [report, setReport] = useState<SyncReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(() => {
+    const stored = localStorage.getItem(LAST_SYNCED_KEY);
+    return stored ? new Date(stored) : null;
+  });
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function loadContacts() {
     setLoading(true);
@@ -32,6 +45,9 @@ export default function Contacts() {
     try {
       const result = await api.syncSheet();
       setReport(result);
+      const syncedAt = new Date();
+      localStorage.setItem(LAST_SYNCED_KEY, syncedAt.toISOString());
+      setLastSyncedAt(syncedAt);
       await loadContacts();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Sync failed");
@@ -45,7 +61,10 @@ export default function Contacts() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-lg font-semibold text-slate-900">Contacts</h1>
-          <p className="text-sm text-slate-500">{contacts.length} contacts</p>
+          <p className="text-sm text-slate-500">
+            {contacts.length} contacts
+            {lastSyncedAt && <span> · Last synced {formatRelativeTime(lastSyncedAt, now)}</span>}
+          </p>
         </div>
         <button
           onClick={handleSync}
