@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Contact {
+  id                String   @id @default(uuid())
+  name              String?
+  company           String?
+  phone             String?
+  domain            String?
+  locationRaw       String?  @map("location_raw")
+  resolvedTimezone  String?  @map("resolved_timezone")
+  industry          String?
+  email             String   @unique
+  customFields      Json?    @map("custom_fields")
+  isSuppressed      Boolean  @default(false) @map("is_suppressed")
+  sourceRowRef      String?  @map("source_row_ref")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  listMembers       ContactListMember[]
+  campaignContacts  CampaignContact[]
+
+  @@map("contacts")
+}
+
+model ContactList {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  members   ContactListMember[]
+
+  @@map("contact_lists")
+}
+
+model ContactListMember {
+  id            String   @id @default(uuid())
+  contactListId String   @map("contact_list_id")
+  contactId     String   @map("contact_id")
+
+  contactList   ContactList @relation(fields: [contactListId], references: [id])
+  contact       Contact     @relation(fields: [contactId], references: [id])
+
+  @@unique([contactListId, contactId])
+  @@map("contact_list_members")
+}
+
+model Template {
+  id        String   @id @default(uuid())
+  name      String
+  subject   String
+  bodyHtml  String   @map("body_html")
+  bodyText  String?  @map("body_text")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  steps     SequenceStep[]
+
+  @@map("templates")
+}
+
+model Campaign {
+  id            String   @id @default(uuid())
+  name          String
+  status        String   @default("draft")
+  sendingRules  Json?    @map("sending_rules")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  steps             SequenceStep[]
+  campaignContacts  CampaignContact[]
+
+  @@map("campaigns")
+}
+
+model SequenceStep {
+  id          String   @id @default(uuid())
+  campaignId  String   @map("campaign_id")
+  stepOrder   Int      @map("step_order")
+  templateId  String   @map("template_id")
+  delayDays   Int      @default(0) @map("delay_days")
+  delayHours  Int      @default(0) @map("delay_hours")
+
+  campaign    Campaign @relation(fields: [campaignId], references: [id])
+  template    Template @relation(fields: [templateId], references: [id])
+
+  dailyQueueEntries DailySendQueue[]
+  emailSends        EmailSend[]
+
+  @@unique([campaignId, stepOrder])
+  @@map("sequence_steps")
+}
+
+model CampaignContact {
+  id            String   @id @default(uuid())
+  campaignId    String   @map("campaign_id")
+  contactId     String   @map("contact_id")
+  currentStepId String?  @map("current_step_id")
+  state         String   @default("pending")
+  enrolledAt    DateTime @default(now()) @map("enrolled_at")
+
+  campaign      Campaign @relation(fields: [campaignId], references: [id])
+  contact       Contact  @relation(fields: [contactId], references: [id])
+
+  dailyQueueEntries DailySendQueue[]
+  emailSends        EmailSend[]
+
+  @@unique([campaignId, contactId])
+  @@map("campaign_contacts")
+}
+
+model DailySendQueue {
+  id                String   @id @default(uuid())
+  campaignContactId String   @map("campaign_contact_id")
+  sequenceStepId    String   @map("sequence_step_id")
+  targetDate        DateTime @map("target_date") @db.Date
+  status            String   @default("pending_review")
+
+  campaignContact   CampaignContact @relation(fields: [campaignContactId], references: [id])
+  sequenceStep      SequenceStep    @relation(fields: [sequenceStepId], references: [id])
+
+  @@map("daily_send_queue")
+}
+
+model EmailSend {
+  id                 String    @id @default(uuid())
+  campaignContactId  String    @map("campaign_contact_id")
+  sequenceStepId     String    @map("sequence_step_id")
+  scheduledFor       DateTime  @map("scheduled_for")
+  currentStatus      String    @default("queued") @map("current_status")
+  providerMessageId  String?   @map("provider_message_id")
+  attemptCount       Int       @default(0) @map("attempt_count")
+
+  campaignContact    CampaignContact @relation(fields: [campaignContactId], references: [id])
+  sequenceStep       SequenceStep    @relation(fields: [sequenceStepId], references: [id])
+
+  events             EmailEvent[]
+
+  @@unique([campaignContactId, sequenceStepId])
+  @@map("email_sends")
+}
+
+model EmailEvent {
+  id          String   @id @default(uuid())
+  emailSendId String   @map("email_send_id")
+  eventType   String   @map("event_type")
+  eventData   Json?    @map("event_data")
+  occurredAt  DateTime @default(now()) @map("occurred_at")
+
+  emailSend   EmailSend @relation(fields: [emailSendId], references: [id])
+
+  @@map("email_events")
+}
+
+model SuppressionList {
+  id       String   @id @default(uuid())
+  email    String   @unique
+  reason   String
+  addedAt  DateTime @default(now()) @map("added_at")
+
+  @@map("suppression_list")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("users")
+}
