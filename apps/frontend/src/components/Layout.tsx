@@ -1,11 +1,13 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
+import Logo from "./Logo";
+import { UsersIcon, SendIcon, DocumentIcon, ChartIcon, LogoutIcon } from "./icons";
 
 const navItems = [
-  { to: "/contacts", label: "Contacts" },
-  { to: "/campaigns", label: "Campaigns" },
-  { to: "/templates", label: "Templates" },
-  { to: "/analytics", label: "Analytics" },
+  { to: "/contacts", label: "Contacts", icon: UsersIcon },
+  { to: "/campaigns", label: "Campaigns", icon: SendIcon },
+  { to: "/templates", label: "Templates", icon: DocumentIcon },
+  { to: "/analytics", label: "Analytics", icon: ChartIcon },
 ];
 
 export default function Layout() {
@@ -15,33 +17,44 @@ export default function Layout() {
   return (
     <div className="min-h-screen bg-slate-50">
       <div className="flex">
-        <aside className="flex h-screen w-56 flex-col border-r border-slate-200 bg-white">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <span className="text-sm font-semibold text-slate-900">Mail Automation</span>
+        <aside className="flex h-screen w-60 flex-col border-r border-slate-200/80 bg-white">
+          <div className="flex items-center gap-2.5 border-b border-slate-200/80 px-5 py-5">
+            <Logo size={32} />
+            <div className="leading-tight">
+              <div className="text-sm font-semibold text-slate-900">Unique SPM</div>
+              <div className="text-xs text-slate-400">Outreach Automation</div>
+            </div>
           </div>
-          <nav className="flex-1 space-y-1 px-3 py-4">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `block rounded-md px-3 py-2 text-sm font-medium ${
-                    isActive ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
+          <nav className="flex-1 space-y-0.5 px-3 py-4">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={({ isActive }) =>
+                    `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition ${
+                      isActive
+                        ? "bg-brand-700 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`
+                  }
+                >
+                  <Icon />
+                  {item.label}
+                </NavLink>
+              );
+            })}
           </nav>
-          <div className="border-t border-slate-200 p-3">
+          <div className="border-t border-slate-200/80 p-3">
             <button
               onClick={() => {
                 logout();
                 navigate("/login");
               }}
-              className="w-full rounded-md px-3 py-2 text-left text-sm font-medium text-slate-600 hover:bg-slate-100"
+              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
             >
+              <LogoutIcon />
               Sign out
             </button>
           </div>

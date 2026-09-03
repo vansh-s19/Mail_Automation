@@ -2,6 +2,7 @@ import { useState, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { api, ApiError } from "../lib/api";
 import { useAuth } from "../lib/AuthContext";
+import Logo from "../components/Logo";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -27,39 +28,71 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">Mail Automation</h1>
-        <p className="mb-6 text-sm text-slate-500">Sign in to your dashboard</p>
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50 px-4">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-96 bg-gradient-to-b from-brand-100/60 to-transparent"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full bg-brand-200/40 blur-3xl"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute -right-24 bottom-1/4 h-72 w-72 rounded-full bg-brand-100/50 blur-3xl"
+        aria-hidden
+      />
 
-        <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
+      <div className="relative w-full max-w-sm">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <Logo size={44} />
+          <h1 className="mt-4 text-lg font-semibold tracking-tight text-slate-900">Unique SPM</h1>
+          <p className="text-sm text-slate-500">Outreach Automation</p>
+        </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
-        <input
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
-
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+        <form
+          onSubmit={handleSubmit}
+          className="rounded-2xl border border-slate-200/80 bg-white p-8 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_12px_32px_-16px_rgba(15,23,42,0.15)]"
         >
-          {loading ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
+          <h2 className="mb-1 text-base font-semibold text-slate-900">Sign in</h2>
+          <p className="mb-6 text-sm text-slate-500">Access your outreach dashboard</p>
+
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Email</label>
+          <input
+            type="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mb-4 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          />
+
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Password</label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mb-5 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
+          />
+
+          {error && (
+            <div className="mb-4 flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <span className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-accent-500 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-600 disabled:opacity-50"
+          >
+            {loading ? "Signing in..." : "Sign in"}
+          </button>
+        </form>
+
+        <p className="mt-6 text-center text-xs text-slate-400">Internal tool · Unique SPM outreach team</p>
+      </div>
     </div>
   );
 }
