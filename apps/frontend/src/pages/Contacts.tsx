@@ -20,7 +20,6 @@ export default function Contacts() {
   const [now, setNow] = useState(() => new Date());
 
   const [search, setSearch] = useState("");
-  const [companyFilter, setCompanyFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   useEffect(() => {
@@ -63,16 +62,9 @@ export default function Contacts() {
     }
   }
 
-  const companies = useMemo(() => {
-    const set = new Set<string>();
-    contacts.forEach((c) => c.company && set.add(c.company));
-    return Array.from(set).sort();
-  }, [contacts]);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return contacts.filter((c) => {
-      if (companyFilter !== "all" && c.company !== companyFilter) return false;
       if (statusFilter === "active" && c.isSuppressed) return false;
       if (statusFilter === "suppressed" && !c.isSuppressed) return false;
       if (!q) return true;
@@ -83,9 +75,9 @@ export default function Contacts() {
         c.email.toLowerCase().includes(q)
       );
     });
-  }, [contacts, search, companyFilter, statusFilter]);
+  }, [contacts, search, statusFilter]);
 
-  const hasActiveFilters = search.trim() !== "" || companyFilter !== "all" || statusFilter !== "all";
+  const hasActiveFilters = search.trim() !== "" || statusFilter !== "all";
 
   return (
     <div>
@@ -134,19 +126,6 @@ export default function Contacts() {
         </div>
 
         <select
-          value={companyFilter}
-          onChange={(e) => setCompanyFilter(e.target.value)}
-          className="rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-        >
-          <option value="all">All companies</option>
-          {companies.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-
-        <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           className="rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
@@ -160,7 +139,6 @@ export default function Contacts() {
           <button
             onClick={() => {
               setSearch("");
-              setCompanyFilter("all");
               setStatusFilter("all");
             }}
             className="text-sm font-medium text-slate-500 hover:text-slate-800"
