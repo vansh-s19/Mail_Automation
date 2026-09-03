@@ -1,0 +1,10 @@
+{
+  "name": "@mail-automation/config",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.ts",
+  "dependencies": {
+    "zod": "^3.23.8",
+    "dotenv": "^16.4.5"
+  }
+}
