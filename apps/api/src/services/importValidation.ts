@@ -80,11 +80,47 @@ export interface ValidatedRow {
   resolvedTimezone: string | null;
 }
 
+const MX_LOOKUP_TIMEOUT_MS = 5000;
+
+/**
+ * A sheet with hundreds of rows typically has a handful of unique domains
+ * (colleagues share a company domain). Caching per-domain avoids repeating
+ * the same DNS lookup for every row, and the timeout keeps one slow/unresponsive
+ * domain from stalling the whole sync.
+ */
+async function domainHasMx(domain: string, cache: Map<string, Promise<boolean>>): Promise<boolean> {
+  const cached = cache.get(domain);
+  if (cached) return cached;
+
+  const lookup = (async () => {
+    try {
+      const mxRecords = await Promise.race([
+        resolveMx(domain),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("MX lookup timed out")), MX_LOOKUP_TIMEOUT_MS)
+        ),
+      ]);
+      return mxRecords.length > 0;
+    } catch {
+      return false;
+    }
+  })();
+
+  cache.set(domain, lookup);
+  return lookup;
+}
+
 /**
  * Per spec §13.9: required-field check -> syntax validation -> MX check
  * -> dedup (handled by caller against DB) -> name-presence flag -> timezone resolution.
+ *
+ * `mxCache` should be a single Map passed in by the caller and reused across
+ * every row in one sync run, so repeated domains only trigger one DNS lookup.
  */
-export async function validateRow(row: SheetRow): Promise<ValidatedRow> {
+export async function validateRow(
+  row: SheetRow,
+  mxCache: Map<string, Promise<boolean>>
+): Promise<ValidatedRow> {
   if (!row.email) {
     return { row, outcome: "invalid", reason: "Missing email", resolvedTimezone: null };
   }
@@ -94,12 +130,8 @@ export async function validateRow(row: SheetRow): Promise<ValidatedRow> {
   }
 
   const domain = row.email.split("@")[1];
-  try {
-    const mxRecords = await resolveMx(domain);
-    if (mxRecords.length === 0) {
-      return { row, outcome: "invalid", reason: "Domain has no MX records", resolvedTimezone: null };
-    }
-  } catch {
+  const hasMx = await domainHasMx(domain, mxCache);
+  if (!hasMx) {
     return { row, outcome: "invalid", reason: "Domain has no MX records", resolvedTimezone: null };
   }
 
