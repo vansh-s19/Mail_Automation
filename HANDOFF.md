@@ -184,3 +184,12 @@ Rebranded from a generic placeholder to the client's real identity: pulled actua
 7. The "Sent" list view (`GET /email-sends` or similar) once there's real data to show.
 8. Analytics page (currently a placeholder).
 9. Actual deployment: API → Railway, frontend → Vercel, switch `DATABASE_URL` to Railway's internal URL, reconsider Postgres public access.
+
+## Update (2026-09-04): deployment is live, auto-deploy on `main`
+
+Everything above this line was written before deployment happened - keeping it
+as-is for history. Current state: `apps/api` and `apps/worker` run on Railway
+(internal Postgres/Redis, not the public dev proxy), frontend on Vercel. All
+three are connected to GitHub and auto-deploy on push/merge to `main` - no
+more manual `railway up`/`vercel --prod` for normal changes. AWS SES domain
+verification/production access status: check with the user, don't assume.
