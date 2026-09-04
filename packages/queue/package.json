@@ -1,12 +1,11 @@
 {
-  "name": "@mail-automation/shared",
+  "name": "@mail-automation/queue",
   "version": "1.0.0",
   "private": true,
   "main": "src/index.ts",
   "dependencies": {
     "@mail-automation/config": "*",
-    "@mail-automation/db": "*",
-    "city-timezones": "^1.2.1",
-    "luxon": "^3.7.2"
+    "bullmq": "^5.21.2",
+    "ioredis": "^5.4.1"
   }
 }

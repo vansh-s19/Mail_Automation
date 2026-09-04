@@ -10,6 +10,7 @@ export interface SheetRow {
   locationRaw: string | null;
   status: string | null;
   source: string | null;
+  industry: string | null;
 }
 
 const HEADER_ALIASES: Record<keyof SheetRow, string[]> = {
@@ -21,6 +22,7 @@ const HEADER_ALIASES: Record<keyof SheetRow, string[]> = {
   locationRaw: ["location"],
   status: ["status"],
   source: ["source"],
+  industry: ["industry"],
 };
 
 function clean(value: string | undefined): string | null {
@@ -42,6 +44,7 @@ export function buildColumnIndex(headerRow: string[]): Record<keyof SheetRow, nu
     "locationRaw",
     "status",
     "source",
+    "industry",
   ];
 
   for (const field of fallbackOrder) {
@@ -68,6 +71,7 @@ export function parseRow(row: string[], columnIndex: Record<keyof SheetRow, numb
     locationRaw: clean(row[columnIndex.locationRaw]),
     status: clean(row[columnIndex.status]),
     source: clean(row[columnIndex.source]),
+    industry: clean(row[columnIndex.industry]),
   };
 }
 

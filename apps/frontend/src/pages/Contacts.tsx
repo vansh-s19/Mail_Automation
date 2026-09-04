@@ -1,14 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
-import { api, ApiError, Contact, SyncReport } from "../lib/api";
+import { useEffect, useState } from "react";
+import { api, ApiError, Contact, ContactFilterOptions, SyncReport } from "../lib/api";
 import { formatRelativeTime } from "../lib/relativeTime";
-import { SearchIcon, RefreshIcon } from "../components/icons";
+import { RefreshIcon, TrashIcon } from "../components/icons";
+import { ContactFilterBar, ContactFilterState, EMPTY_CONTACT_FILTERS } from "../components/ContactFilterBar";
 
 const LAST_SYNCED_KEY = "mail_automation_last_synced";
-
-type StatusFilter = "all" | "active" | "suppressed";
+const PAGE_SIZE = 50;
 
 export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [filterOptions, setFilterOptions] = useState<ContactFilterOptions | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [report, setReport] = useState<SyncReport | null>(null);
@@ -19,20 +21,46 @@ export default function Contacts() {
   });
   const [now, setNow] = useState(() => new Date());
 
-  const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [filters, setFilters] = useState<ContactFilterState>(EMPTY_CONTACT_FILTERS);
+  const [page, setPage] = useState(0);
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    api.getContactFilterOptions().then(setFilterOptions).catch(() => {});
+  }, []);
+
+  // Filter changes reset back to page 0; debounced so typing in the search
+  // box doesn't fire a request per keystroke.
+  useEffect(() => {
+    setPage(0);
+  }, [filters.search, filters.company, filters.industry, filters.location]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      loadContacts();
+    }, filters.search ? 250 : 0);
+    return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters, page]);
+
   async function loadContacts() {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getContacts();
-      setContacts(data);
+      const data = await api.getContacts({
+        search: filters.search || undefined,
+        company: filters.company || undefined,
+        industry: filters.industry || undefined,
+        location: filters.location || undefined,
+        skip: page * PAGE_SIZE,
+        take: PAGE_SIZE,
+      });
+      setContacts(data.contacts);
+      setTotal(data.total);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load contacts");
     } finally {
@@ -40,9 +68,19 @@ export default function Contacts() {
     }
   }
 
-  useEffect(() => {
-    loadContacts();
-  }, []);
+  async function handleDelete(contact: Contact) {
+    if (!confirm(`Delete ${contact.name ?? contact.email}? This can't be undone.`)) return;
+    try {
+      await api.deleteContact(contact.id);
+      await loadContacts();
+    } catch (err) {
+      alert(
+        err instanceof ApiError
+          ? err.message
+          : "Failed to delete contact"
+      );
+    }
+  }
 
   async function handleSync() {
     setSyncing(true);
@@ -55,6 +93,8 @@ export default function Contacts() {
       localStorage.setItem(LAST_SYNCED_KEY, syncedAt.toISOString());
       setLastSyncedAt(syncedAt);
       await loadContacts();
+      const options = await api.getContactFilterOptions();
+      setFilterOptions(options);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Sync failed");
     } finally {
@@ -62,22 +102,7 @@ export default function Contacts() {
     }
   }
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return contacts.filter((c) => {
-      if (statusFilter === "active" && c.isSuppressed) return false;
-      if (statusFilter === "suppressed" && !c.isSuppressed) return false;
-      if (!q) return true;
-      return (
-        c.name?.toLowerCase().includes(q) ||
-        c.title?.toLowerCase().includes(q) ||
-        c.company?.toLowerCase().includes(q) ||
-        c.email.toLowerCase().includes(q)
-      );
-    });
-  }, [contacts, search, statusFilter]);
-
-  const hasActiveFilters = search.trim() !== "" || statusFilter !== "all";
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
     <div>
@@ -85,7 +110,7 @@ export default function Contacts() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-slate-900">Contacts</h1>
           <p className="text-sm text-slate-500">
-            {contacts.length} total
+            {total} total
             {lastSyncedAt && <span> · Last synced {formatRelativeTime(lastSyncedAt, now)}</span>}
           </p>
         </div>
@@ -113,46 +138,12 @@ export default function Contacts() {
         <div className="mb-4 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[220px]">
-          <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search name, company, title, or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-10 pr-3 text-sm text-slate-900 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-          />
-        </div>
-
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          className="rounded-lg border border-slate-300 bg-white py-2.5 px-3 text-sm text-slate-700 shadow-sm transition focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-        >
-          <option value="all">All statuses</option>
-          <option value="active">Active</option>
-          <option value="suppressed">Suppressed</option>
-        </select>
-
-        {hasActiveFilters && (
-          <button
-            onClick={() => {
-              setSearch("");
-              setStatusFilter("all");
-            }}
-            className="text-sm font-medium text-slate-500 hover:text-slate-800"
-          >
-            Clear filters
-          </button>
-        )}
-
-        {hasActiveFilters && (
-          <span className="text-sm text-slate-400">
-            {filtered.length} of {contacts.length}
-          </span>
-        )}
-      </div>
+      <ContactFilterBar
+        value={filters}
+        onChange={setFilters}
+        options={filterOptions}
+        searchPlaceholder="Search name, company, title, or email..."
+      />
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="overflow-x-auto">
@@ -160,46 +151,44 @@ export default function Contacts() {
             <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Title</th>
                 <th className="px-4 py-3">Company</th>
+                <th className="px-4 py-3">Industry</th>
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Timezone</th>
                 <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
                     Loading...
                   </td>
                 </tr>
               ) : contacts.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
-                    No contacts yet. Click "Sync from Sheet" to import.
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-slate-400">
-                    No contacts match your filters.
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400">
+                    {total === 0 ? 'No contacts yet. Click "Sync from Sheet" to import.' : "No contacts match your filters."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((c) => (
+                contacts.map((c) => (
                   <tr key={c.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50/70">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
                           {initials(c.name, c.email)}
                         </div>
-                        <span className="font-medium text-slate-900">{c.name ?? "—"}</span>
+                        <div>
+                          <span className="block font-medium text-slate-900">{c.name ?? "—"}</span>
+                          {c.title && <span className="block text-xs text-slate-400">{c.title}</span>}
+                        </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{c.title ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">{c.company ?? "—"}</td>
+                    <td className="px-4 py-3 text-slate-600">{c.industry ?? "—"}</td>
                     <td className="px-4 py-3 text-slate-600">{c.email}</td>
                     <td className="px-4 py-3 text-slate-600">{c.locationRaw ?? "—"}</td>
                     <td className="px-4 py-3">
@@ -222,12 +211,45 @@ export default function Contacts() {
                         </span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleDelete(c)}
+                        className="text-slate-300 hover:text-red-600"
+                        title="Delete contact"
+                      >
+                        <TrashIcon className="h-4 w-4" />
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+
+        {total > PAGE_SIZE && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm text-slate-500">
+            <span>
+              Page {page + 1} of {pageCount} · {total} contacts
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={page === 0}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={page >= pageCount - 1}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

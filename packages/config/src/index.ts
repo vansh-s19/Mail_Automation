@@ -20,6 +20,16 @@ const envSchema = z.object({
   AWS_SECRET_ACCESS_KEY: z.string().optional(),
   AWS_REGION: z.string().optional(),
   SES_FROM_ADDRESS: z.string().optional(),
+  // Optional: ties sends to an SES configuration set so bounce/complaint/delivery
+  // events get published to the SNS topic the webhook receiver listens on.
+  SES_CONFIGURATION_SET: z.string().optional(),
+  // Shared secret appended to the SNS webhook URL as a query param so the
+  // endpoint isn't wide open to anyone who finds it - SNS itself has no
+  // built-in request auth for HTTP(S) subscriptions.
+  SNS_WEBHOOK_SECRET: z.string().optional(),
+  // S3 bucket for the PDF Library (Documents feature) - reuses the same AWS
+  // account/region as SES, just a separate bucket + scoped IAM policy.
+  S3_DOCUMENTS_BUCKET: z.string().optional(),
 
   GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
   GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: z.string().optional(),
@@ -45,6 +55,26 @@ if (!parsed.success) {
 }
 
 export const env = parsed.data;
+
+export function requireSesConfig() {
+  const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, SES_FROM_ADDRESS } = env;
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !AWS_REGION || !SES_FROM_ADDRESS) {
+    throw new Error(
+      "AWS SES is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and SES_FROM_ADDRESS."
+    );
+  }
+  return { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, SES_FROM_ADDRESS };
+}
+
+export function requireS3Config() {
+  const { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_DOCUMENTS_BUCKET } = env;
+  if (!AWS_ACCESS_KEY_ID || !AWS_SECRET_ACCESS_KEY || !AWS_REGION || !S3_DOCUMENTS_BUCKET) {
+    throw new Error(
+      "S3 document storage is not configured. Set AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, and S3_DOCUMENTS_BUCKET."
+    );
+  }
+  return { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION, S3_DOCUMENTS_BUCKET };
+}
 
 export function requireGoogleSheetsConfig() {
   const { GOOGLE_SERVICE_ACCOUNT_EMAIL, GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY, SHEET_ID } = env;

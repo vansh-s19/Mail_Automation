@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "@mail-automation/db";
 import { asyncHandler } from "../middleware/asyncHandler";
-import { verifyUnsubscribeToken } from "../services/unsubscribeToken";
+import { verifyUnsubscribeToken } from "@mail-automation/shared";
 
 const router = Router();
 

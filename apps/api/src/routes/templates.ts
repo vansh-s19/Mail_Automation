@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { requireAuth } from "../middleware/auth";
 import { asyncHandler } from "../middleware/asyncHandler";
-import { renderEmailForContact } from "../services/emailRender";
+import { renderEmailForContact } from "@mail-automation/shared";
 
 const router = Router();
 

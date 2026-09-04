@@ -61,6 +61,7 @@ model Template {
   createdAt DateTime @default(now()) @map("created_at")
 
   steps     SequenceStep[]
+  automations SequenceStepAutomation[]
 
   @@map("templates")
 }
@@ -79,21 +80,45 @@ model Campaign {
 }
 
 model SequenceStep {
-  id          String   @id @default(uuid())
-  campaignId  String   @map("campaign_id")
-  stepOrder   Int      @map("step_order")
-  templateId  String   @map("template_id")
-  delayDays   Int      @default(0) @map("delay_days")
-  delayHours  Int      @default(0) @map("delay_hours")
+  id              String   @id @default(uuid())
+  campaignId      String   @map("campaign_id")
+  stepOrder       Int      @map("step_order")
+  templateId      String   @map("template_id")
+  delayDays       Int      @default(0) @map("delay_days")
+  delayHours      Int      @default(0) @map("delay_hours")
+  // Overrides the template's own subject for just this step - lets one
+  // reusable template serve different subject lines per step/campaign
+  // without forking the template itself. Null = use template.subject.
+  subjectOverride String?  @map("subject_override")
+  // Overrides Campaign.sendingRules.businessHoursStart for just this step's
+  // send time. Null = inherit the campaign-wide business-hours-start.
+  sendHour        Int?     @map("send_hour")
+  // Optional PDF sent as an attachment with this step - reused across
+  // campaigns/steps from the PDF Library rather than re-uploaded each time.
+  attachmentId    String?  @map("attachment_id")
 
-  campaign    Campaign @relation(fields: [campaignId], references: [id])
-  template    Template @relation(fields: [templateId], references: [id])
+  campaign    Campaign     @relation(fields: [campaignId], references: [id])
+  template    Template     @relation(fields: [templateId], references: [id])
+  attachment  PdfDocument? @relation(fields: [attachmentId], references: [id])
 
   dailyQueueEntries DailySendQueue[]
   emailSends        EmailSend[]
+  automations       SequenceStepAutomation[]
 
   @@unique([campaignId, stepOrder])
   @@map("sequence_steps")
+}
+
+model PdfDocument {
+  id        String   @id @default(uuid())
+  name      String
+  s3Key     String   @map("s3_key")
+  sizeBytes Int      @map("size_bytes")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  steps     SequenceStep[]
+
+  @@map("pdf_documents")
 }
 
 model CampaignContact {
@@ -140,6 +165,7 @@ model EmailSend {
   sequenceStep       SequenceStep    @relation(fields: [sequenceStepId], references: [id])
 
   events             EmailEvent[]
+  automationFollowUps AutomationFollowUp[]
 
   @@unique([campaignContactId, sequenceStepId])
   @@map("email_sends")
@@ -173,4 +199,49 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
 
   @@map("users")
+}
+
+// Engagement automation: a rule attached to a sequence step ("opened, no
+// reply -> send a different template after N hours"), not a campaign-level
+// toggle - keeps the model extensible to future triggers (link-clicked,
+// no-open-resend, replied-stop) without another schema change.
+model SequenceStepAutomation {
+  id                String   @id @default(uuid())
+  sequenceStepId    String   @map("sequence_step_id")
+  // "opened_no_reply" is the only trigger implemented today; the column
+  // supports future values without a migration.
+  triggerType       String   @map("trigger_type")
+  triggerDelayHours Int      @map("trigger_delay_hours")
+  actionTemplateId  String   @map("action_template_id")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  sequenceStep      SequenceStep @relation(fields: [sequenceStepId], references: [id])
+  actionTemplate    Template     @relation(fields: [actionTemplateId], references: [id])
+
+  followUps         AutomationFollowUp[]
+
+  @@map("sequence_step_automations")
+}
+
+// Deliberately a separate table from EmailSend, not a nullable column on it -
+// EmailSend's own unique(campaignContactId, sequenceStepId) constraint is the
+// hard duplicate-send guard for the normal sequence and must stay untouched.
+model AutomationFollowUp {
+  id                 String   @id @default(uuid())
+  automationRuleId   String   @map("automation_rule_id")
+  // The original step-send whose "opened" event triggered this follow-up.
+  triggerEmailSendId String   @map("trigger_email_send_id")
+  status             String   @default("scheduled") @map("status") // scheduled -> sent/failed/cancelled
+  scheduledFor       DateTime @map("scheduled_for")
+  providerMessageId  String?  @map("provider_message_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  automationRule     SequenceStepAutomation @relation(fields: [automationRuleId], references: [id])
+  triggerEmailSend   EmailSend              @relation(fields: [triggerEmailSendId], references: [id])
+
+  // Hard dedup guard: the same rule can only ever schedule once per triggering
+  // send - mirrors EmailSend's own uniqueness pattern.
+  @@unique([automationRuleId, triggerEmailSendId])
+  @@map("automation_follow_ups")
 }

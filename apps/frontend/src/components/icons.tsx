@@ -109,6 +109,18 @@ export function TrashIcon({ className = "" }: IconProps) {
   );
 }
 
+export function PaperclipIcon({ className = "" }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`${base} ${className}`}>
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M17.5 8.5 9.9 16.1a3 3 0 0 1-4.24-4.24L14.1 3.4a2 2 0 0 1 2.83 2.83l-8.3 8.3a1 1 0 0 1-1.42-1.42l7.07-7.07"
+      />
+    </svg>
+  );
+}
+
 export function ArrowLeftIcon({ className = "" }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className={`${base} ${className}`}>

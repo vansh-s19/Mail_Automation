@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api, ApiError, CampaignDetail as CampaignDetailType, Template, Contact, SequenceStep } from "../lib/api";
-import { ArrowLeftIcon, PlusIcon, ChevronUpIcon, ChevronDownIcon, TrashIcon } from "../components/icons";
+import { api, ApiError, CampaignDetail as CampaignDetailType, Template, SequenceStep, SequenceStepInput, PdfDocument, StepAutomation } from "../lib/api";
+import { ArrowLeftIcon, PlusIcon, ChevronUpIcon, ChevronDownIcon, TrashIcon, PaperclipIcon } from "../components/icons";
+import { ContactPicker } from "../components/ContactPicker";
+
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
 
 const STATUS_STYLES: Record<string, string> = {
   draft: "bg-slate-100 text-slate-600",
@@ -16,7 +19,7 @@ export default function CampaignDetail() {
   const navigate = useNavigate();
   const [campaign, setCampaign] = useState<CampaignDetailType | null>(null);
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [allContacts, setAllContacts] = useState<Contact[]>([]);
+  const [documents, setDocuments] = useState<PdfDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -26,10 +29,10 @@ export default function CampaignDetail() {
     setLoading(true);
     setError(null);
     try {
-      const [c, t, contacts] = await Promise.all([api.getCampaign(id), api.getTemplates(), api.getContacts()]);
+      const [c, t, docs] = await Promise.all([api.getCampaign(id), api.getTemplates(), api.getDocuments()]);
       setCampaign(c);
       setTemplates(t);
-      setAllContacts(contacts);
+      setDocuments(docs);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to load campaign");
     } finally {
@@ -55,7 +58,7 @@ export default function CampaignDetail() {
     }
   }
 
-  async function handleStepChange(step: SequenceStep, data: Partial<{ templateId: string; delayDays: number; delayHours: number }>) {
+  async function handleStepChange(step: SequenceStep, data: Partial<SequenceStepInput>) {
     try {
       await api.updateStep(step.id, data);
       await load();
@@ -127,6 +130,15 @@ export default function CampaignDetail() {
       await load();
     } catch (err) {
       alert(err instanceof ApiError ? err.message : "Failed to remove contact");
+    }
+  }
+
+  async function handleMarkReplied(emailSendId: string) {
+    try {
+      await api.markReplied(emailSendId);
+      await load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Failed to mark as replied");
     }
   }
 
@@ -261,7 +273,46 @@ export default function CampaignDetail() {
                             <span className="text-sm text-slate-400">days</span>
                           </>
                         )}
+
+                        <span className="text-sm text-slate-400">send at</span>
+                        <select
+                          value={step.sendHour ?? ""}
+                          onChange={(e) =>
+                            handleStepChange(step, { sendHour: e.target.value === "" ? null : Number(e.target.value) })
+                          }
+                          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">Campaign default</option>
+                          {HOUR_OPTIONS.map((h) => (
+                            <option key={h} value={h}>
+                              {formatHour(h)}
+                            </option>
+                          ))}
+                        </select>
+
+                        <PaperclipIcon className="h-4 w-4 text-slate-400" />
+                        <select
+                          value={step.attachmentId ?? ""}
+                          onChange={(e) =>
+                            handleStepChange(step, { attachmentId: e.target.value === "" ? null : e.target.value })
+                          }
+                          className="rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                          <option value="">No attachment</option>
+                          {documents.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
+
+                      <SubjectOverrideInput
+                        step={step}
+                        onCommit={(subjectOverride) => handleStepChange(step, { subjectOverride })}
+                      />
+
+                      <StepAutomations step={step} templates={templates} />
                     </div>
 
                     <button onClick={() => handleDeleteStep(step)} className="text-slate-300 hover:text-red-600">
@@ -302,12 +353,23 @@ export default function CampaignDetail() {
                     <p className="truncate text-sm font-medium text-slate-800">{cc.contact.name ?? cc.contact.email}</p>
                     <p className="truncate text-xs text-slate-400">{cc.contact.company ?? cc.contact.email}</p>
                   </div>
-                  <button
-                    onClick={() => handleRemoveContact(cc.contactId)}
-                    className="shrink-0 text-slate-300 hover:text-red-600"
-                  >
-                    <TrashIcon className="h-4 w-4" />
-                  </button>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {cc.emailSends[0] && cc.emailSends[0].currentStatus !== "queued" && (
+                      <button
+                        onClick={() => handleMarkReplied(cc.emailSends[0].id)}
+                        title="Stops any pending 'opened, no reply' automation for their last send"
+                        className="rounded-md border border-slate-200 px-1.5 py-0.5 text-[11px] font-medium text-slate-500 hover:border-brand-300 hover:text-brand-700"
+                      >
+                        Mark replied
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleRemoveContact(cc.contactId)}
+                      className="text-slate-300 hover:text-red-600"
+                    >
+                      <TrashIcon className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -317,7 +379,6 @@ export default function CampaignDetail() {
 
       {pickerOpen && id && (
         <ContactPicker
-          allContacts={allContacts}
           enrolledIds={enrolledIds}
           onClose={() => setPickerOpen(false)}
           onEnroll={async (contactIds) => {
@@ -363,13 +424,12 @@ function SendingRulesForm({
     }
   }
 
-  const hourOptions = Array.from({ length: 24 }, (_, h) => h);
-
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="mb-1 font-semibold text-slate-900">Sending Rules</h2>
       <p className="mb-4 text-xs text-slate-400">
         Send time is computed in each contact's own local timezone - e.g. 10 AM here means 10 AM for them, wherever they are.
+        A step with its own "send at" time overrides this business-hours-start for that step only.
       </p>
 
       <div className="grid grid-cols-2 gap-4">
@@ -382,6 +442,9 @@ function SendingRulesForm({
             onChange={(e) => setDailySendCap(Number(e.target.value))}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
           />
+          <p className="mt-1 text-xs text-slate-400">
+            Max sends per day for this campaign. Contacts past the cap roll into the next day's queue automatically.
+          </p>
         </div>
         <div className="flex items-end pb-2">
           <label className="flex items-center gap-2 text-sm text-slate-700">
@@ -401,7 +464,7 @@ function SendingRulesForm({
             onChange={(e) => setBusinessHoursStart(Number(e.target.value))}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm"
           >
-            {hourOptions.map((h) => (
+            {HOUR_OPTIONS.map((h) => (
               <option key={h} value={h}>
                 {formatHour(h)}
               </option>
@@ -415,7 +478,7 @@ function SendingRulesForm({
             onChange={(e) => setBusinessHoursEnd(Number(e.target.value))}
             className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm"
           >
-            {hourOptions.map((h) => (
+            {HOUR_OPTIONS.map((h) => (
               <option key={h} value={h}>
                 {formatHour(h)}
               </option>
@@ -444,99 +507,154 @@ function formatHour(h: number): string {
   return `${hour12}:00 ${period}`;
 }
 
-function ContactPicker({
-  allContacts,
-  enrolledIds,
-  onClose,
-  onEnroll,
-}: {
-  allContacts: Contact[];
-  enrolledIds: Set<string>;
-  onClose: () => void;
-  onEnroll: (contactIds: string[]) => Promise<void>;
-}) {
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
+// Subject override is free text, so it commits on blur (like a normal form
+// field) rather than firing an API call per keystroke the way the template/
+// delay/send-hour controls do.
+function SubjectOverrideInput({ step, onCommit }: { step: SequenceStep; onCommit: (value: string | null) => void }) {
+  const [value, setValue] = useState(step.subjectOverride ?? "");
 
-  // Unsubscribed contacts never show up here to begin with - the API also
-  // rejects them defensively, but hiding them is the honest UX (picking one
-  // shouldn't look possible if it's actually not allowed).
-  const available = allContacts.filter((c) => !enrolledIds.has(c.id) && !c.isSuppressed);
-  const filtered = available.filter((c) => {
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return c.name?.toLowerCase().includes(q) || c.company?.toLowerCase().includes(q) || c.email.toLowerCase().includes(q);
-  });
-
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
+  useEffect(() => {
+    setValue(step.subjectOverride ?? "");
+  }, [step.id, step.subjectOverride]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 px-4">
-      <div className="flex h-[600px] w-full max-w-lg flex-col rounded-2xl bg-white p-6 shadow-xl">
-        <h2 className="mb-4 text-base font-semibold text-slate-900">Add Contacts</h2>
+    <input
+      type="text"
+      value={value}
+      placeholder={`Subject override (default: "${step.template.subject}")`}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => {
+        const trimmed = value.trim();
+        if (trimmed === (step.subjectOverride ?? "")) return;
+        onCommit(trimmed === "" ? null : trimmed);
+      }}
+      className="mt-2 w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-700 placeholder:text-slate-400"
+    />
+  );
+}
 
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search name, company, or email..."
-          className="mb-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-100"
-        />
+const DEFAULT_AUTOMATION_HOURS = 3;
 
-        <div className="flex-1 space-y-1 overflow-y-auto">
-          {filtered.length === 0 ? (
-            <p className="py-6 text-center text-sm text-slate-400">No contacts found.</p>
-          ) : (
-            filtered.map((c) => (
-              <label
-                key={c.id}
-                className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 hover:bg-slate-50"
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(c.id)}
-                  onChange={() => toggle(c.id)}
-                  className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-100"
-                />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-slate-800">{c.name ?? c.email}</p>
-                  <p className="truncate text-xs text-slate-400">{c.company ?? c.email}</p>
-                </div>
-              </label>
-            ))
-          )}
+// "Opened, no reply -> send a different template" automation, attached to
+// this specific step rather than a campaign-wide toggle - keeps room for
+// future trigger types (link-clicked, no-open-resend, replied-stop) without
+// another schema/UI change.
+function StepAutomations({ step, templates }: { step: SequenceStep; templates: Template[] }) {
+  const [automations, setAutomations] = useState<StepAutomation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [adding, setAdding] = useState(false);
+  const [newTemplateId, setNewTemplateId] = useState(templates[0]?.id ?? "");
+  const [newDelayHours, setNewDelayHours] = useState(DEFAULT_AUTOMATION_HOURS);
+
+  async function load() {
+    setLoading(true);
+    try {
+      setAutomations(await api.getStepAutomations(step.id));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step.id]);
+
+  async function handleAdd() {
+    if (!newTemplateId) return;
+    setAdding(true);
+    try {
+      await api.createStepAutomation(step.id, {
+        triggerType: "opened_no_reply",
+        triggerDelayHours: newDelayHours,
+        actionTemplateId: newTemplateId,
+      });
+      await load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Failed to add automation rule");
+    } finally {
+      setAdding(false);
+    }
+  }
+
+  async function handleToggle(automation: StepAutomation) {
+    try {
+      await api.updateStepAutomation(automation.id, { isActive: !automation.isActive });
+      await load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Failed to update automation rule");
+    }
+  }
+
+  async function handleDelete(automation: StepAutomation) {
+    if (!confirm(`Remove this automation rule?`)) return;
+    try {
+      await api.deleteStepAutomation(automation.id);
+      await load();
+    } catch (err) {
+      alert(err instanceof ApiError ? err.message : "Failed to delete automation rule");
+    }
+  }
+
+  if (loading) return null;
+
+  return (
+    <div className="mt-3 rounded-md border border-dashed border-slate-200 bg-slate-50/60 p-2.5">
+      <p className="mb-2 text-xs font-medium text-slate-500">Automation: if opened with no reply</p>
+
+      {automations.length > 0 && (
+        <div className="mb-2 space-y-1.5">
+          {automations.map((a) => (
+            <div key={a.id} className="flex items-center justify-between gap-2 text-xs">
+              <span className={a.isActive ? "text-slate-600" : "text-slate-400 line-through"}>
+                Wait {a.triggerDelayHours}h → send "{a.actionTemplate.name}"
+              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <button onClick={() => handleToggle(a)} className="text-slate-400 hover:text-slate-700">
+                  {a.isActive ? "Pause" : "Resume"}
+                </button>
+                <button onClick={() => handleDelete(a)} className="text-slate-400 hover:text-red-600">
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
+      )}
 
-        <div className="mt-4 flex justify-between border-t border-slate-100 pt-4">
-          <span className="text-sm text-slate-500">{selected.size} selected</span>
-          <div className="flex gap-2">
-            <button
-              onClick={onClose}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={async () => {
-                setSaving(true);
-                await onEnroll(Array.from(selected));
-                setSaving(false);
-              }}
-              disabled={selected.size === 0 || saving}
-              className="rounded-lg bg-accent-500 px-4 py-2 text-sm font-semibold text-white hover:bg-accent-600 disabled:opacity-50"
-            >
-              {saving ? "Adding..." : "Add Selected"}
-            </button>
-          </div>
+      {templates.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-slate-400">Wait</span>
+          <input
+            type="number"
+            min={1}
+            max={168}
+            value={newDelayHours}
+            onChange={(e) => setNewDelayHours(Number(e.target.value))}
+            className="w-14 rounded-md border border-slate-300 px-1.5 py-1"
+          />
+          <span className="text-slate-400">hrs, then send</span>
+          <select
+            value={newTemplateId}
+            onChange={(e) => setNewTemplateId(e.target.value)}
+            className="rounded-md border border-slate-300 px-1.5 py-1"
+          >
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleAdd}
+            disabled={adding}
+            className="rounded-md border border-slate-300 px-2 py-1 font-medium text-slate-700 hover:bg-white disabled:opacity-50"
+          >
+            {adding ? "Adding..." : "+ Add rule"}
+          </button>
         </div>
-      </div>
+      )}
     </div>
   );
 }
+

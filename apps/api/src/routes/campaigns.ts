@@ -48,8 +48,10 @@ router.get("/:id", asyncHandler(async (req, res) => {
   const campaign = await prisma.campaign.findUnique({
     where: { id: req.params.id },
     include: {
-      steps: { orderBy: { stepOrder: "asc" }, include: { template: true } },
-      campaignContacts: { include: { contact: true } },
+      steps: { orderBy: { stepOrder: "asc" }, include: { template: true, attachment: true } },
+      campaignContacts: {
+        include: { contact: true, emailSends: { orderBy: { scheduledFor: "desc" }, take: 1 } },
+      },
     },
   });
   if (!campaign) return res.status(404).json({ error: "Campaign not found" });
@@ -150,11 +152,14 @@ router.post("/:id/duplicate", asyncHandler(async (req, res) => {
           templateId: s.templateId,
           delayDays: s.delayDays,
           delayHours: s.delayHours,
+          subjectOverride: s.subjectOverride,
+          sendHour: s.sendHour,
+          attachmentId: s.attachmentId,
           stepOrder: s.stepOrder,
         })),
       },
     },
-    include: { steps: { orderBy: { stepOrder: "asc" }, include: { template: true } } },
+    include: { steps: { orderBy: { stepOrder: "asc" }, include: { template: true, attachment: true } } },
   });
 
   res.status(201).json(copy);
@@ -166,6 +171,9 @@ const stepSchema = z.object({
   templateId: z.string().uuid(),
   delayDays: z.number().int().min(0).default(0),
   delayHours: z.number().int().min(0).max(23).default(0),
+  subjectOverride: z.string().min(1).nullable().optional(),
+  sendHour: z.number().int().min(0).max(23).nullable().optional(),
+  attachmentId: z.string().uuid().nullable().optional(),
 });
 
 router.post("/:id/steps", asyncHandler(async (req, res) => {
@@ -180,6 +188,11 @@ router.post("/:id/steps", asyncHandler(async (req, res) => {
   const template = await prisma.template.findUnique({ where: { id: parsed.data.templateId } });
   if (!template) return res.status(400).json({ error: "Template not found" });
 
+  if (parsed.data.attachmentId) {
+    const document = await prisma.pdfDocument.findUnique({ where: { id: parsed.data.attachmentId } });
+    if (!document) return res.status(400).json({ error: "Document not found" });
+  }
+
   const maxOrder = await prisma.sequenceStep.aggregate({
     where: { campaignId: req.params.id },
     _max: { stepOrder: true },
@@ -191,9 +204,12 @@ router.post("/:id/steps", asyncHandler(async (req, res) => {
       templateId: parsed.data.templateId,
       delayDays: parsed.data.delayDays,
       delayHours: parsed.data.delayHours,
+      subjectOverride: parsed.data.subjectOverride,
+      sendHour: parsed.data.sendHour,
+      attachmentId: parsed.data.attachmentId,
       stepOrder: (maxOrder._max.stepOrder ?? -1) + 1,
     },
-    include: { template: true },
+    include: { template: true, attachment: true },
   });
   res.status(201).json(step);
 }));
@@ -202,6 +218,9 @@ const stepUpdateSchema = z.object({
   templateId: z.string().uuid().optional(),
   delayDays: z.number().int().min(0).optional(),
   delayHours: z.number().int().min(0).max(23).optional(),
+  subjectOverride: z.string().min(1).nullable().optional(),
+  sendHour: z.number().int().min(0).max(23).nullable().optional(),
+  attachmentId: z.string().uuid().nullable().optional(),
 });
 
 router.patch("/steps/:stepId", asyncHandler(async (req, res) => {
@@ -209,11 +228,15 @@ router.patch("/steps/:stepId", asyncHandler(async (req, res) => {
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid step", details: parsed.error.flatten().fieldErrors });
   }
+  if (parsed.data.attachmentId) {
+    const document = await prisma.pdfDocument.findUnique({ where: { id: parsed.data.attachmentId } });
+    if (!document) return res.status(400).json({ error: "Document not found" });
+  }
   try {
     const step = await prisma.sequenceStep.update({
       where: { id: req.params.stepId },
       data: parsed.data,
-      include: { template: true },
+      include: { template: true, attachment: true },
     });
     res.json(step);
   } catch {
@@ -227,6 +250,74 @@ router.delete("/steps/:stepId", asyncHandler(async (req, res) => {
     res.status(204).send();
   } catch {
     res.status(404).json({ error: "Step not found" });
+  }
+}));
+
+// ---- Engagement automation rules (attached to a sequence step, not the campaign) ----
+
+const automationSchema = z.object({
+  // "opened_no_reply" is the only trigger implemented today - the column and
+  // this enum both leave room for future values (link_clicked, no_open, etc.)
+  // without another migration.
+  triggerType: z.literal("opened_no_reply"),
+  triggerDelayHours: z.number().int().min(1).max(168),
+  actionTemplateId: z.string().uuid(),
+  isActive: z.boolean().default(true),
+});
+
+router.get("/steps/:stepId/automations", asyncHandler(async (req, res) => {
+  const automations = await prisma.sequenceStepAutomation.findMany({
+    where: { sequenceStepId: req.params.stepId },
+    include: { actionTemplate: true },
+    orderBy: { createdAt: "asc" },
+  });
+  res.json(automations);
+}));
+
+router.post("/steps/:stepId/automations", asyncHandler(async (req, res) => {
+  const parsed = automationSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid automation rule", details: parsed.error.flatten().fieldErrors });
+  }
+
+  const step = await prisma.sequenceStep.findUnique({ where: { id: req.params.stepId } });
+  if (!step) return res.status(404).json({ error: "Step not found" });
+
+  const template = await prisma.template.findUnique({ where: { id: parsed.data.actionTemplateId } });
+  if (!template) return res.status(400).json({ error: "Template not found" });
+
+  const automation = await prisma.sequenceStepAutomation.create({
+    data: { sequenceStepId: req.params.stepId, ...parsed.data },
+    include: { actionTemplate: true },
+  });
+  res.status(201).json(automation);
+}));
+
+const automationUpdateSchema = automationSchema.partial();
+
+router.patch("/automations/:automationId", asyncHandler(async (req, res) => {
+  const parsed = automationUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid automation rule", details: parsed.error.flatten().fieldErrors });
+  }
+  try {
+    const automation = await prisma.sequenceStepAutomation.update({
+      where: { id: req.params.automationId },
+      data: parsed.data,
+      include: { actionTemplate: true },
+    });
+    res.json(automation);
+  } catch {
+    res.status(404).json({ error: "Automation rule not found" });
+  }
+}));
+
+router.delete("/automations/:automationId", asyncHandler(async (req, res) => {
+  try {
+    await prisma.sequenceStepAutomation.delete({ where: { id: req.params.automationId } });
+    res.status(204).send();
+  } catch {
+    res.status(404).json({ error: "Automation rule not found" });
   }
 }));
 

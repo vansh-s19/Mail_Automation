@@ -52,6 +52,7 @@ export interface Contact {
   name: string | null;
   title: string | null;
   company: string | null;
+  industry: string | null;
   phone: string | null;
   email: string;
   locationRaw: string | null;
@@ -59,6 +60,22 @@ export interface Contact {
   isSuppressed: boolean;
   customFields: Record<string, unknown> | null;
   createdAt: string;
+}
+
+export interface ContactFilters {
+  search?: string;
+  company?: string;
+  industry?: string;
+  location?: string;
+  status?: "active" | "suppressed";
+  skip?: number;
+  take?: number;
+}
+
+export interface ContactFilterOptions {
+  companies: string[];
+  industries: string[];
+  locations: string[];
 }
 
 export interface SyncReport {
@@ -105,6 +122,14 @@ export interface CampaignSummary {
   contactCount: number;
 }
 
+export interface PdfDocument {
+  id: string;
+  name: string;
+  s3Key: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface SequenceStep {
   id: string;
   campaignId: string;
@@ -112,7 +137,37 @@ export interface SequenceStep {
   templateId: string;
   delayDays: number;
   delayHours: number;
+  subjectOverride: string | null;
+  sendHour: number | null;
+  attachmentId: string | null;
   template: Template;
+  attachment: PdfDocument | null;
+}
+
+export interface SequenceStepInput {
+  templateId: string;
+  delayDays: number;
+  delayHours: number;
+  subjectOverride?: string | null;
+  sendHour?: number | null;
+  attachmentId?: string | null;
+}
+
+export interface StepAutomation {
+  id: string;
+  sequenceStepId: string;
+  triggerType: "opened_no_reply";
+  triggerDelayHours: number;
+  actionTemplateId: string;
+  isActive: boolean;
+  actionTemplate: Template;
+}
+
+export interface StepAutomationInput {
+  triggerType: "opened_no_reply";
+  triggerDelayHours: number;
+  actionTemplateId: string;
+  isActive?: boolean;
 }
 
 export interface CampaignDetail {
@@ -122,7 +177,14 @@ export interface CampaignDetail {
   sendingRules: SendingRules;
   createdAt: string;
   steps: SequenceStep[];
-  campaignContacts: { id: string; contactId: string; state: string; enrolledAt: string; contact: Contact }[];
+  campaignContacts: {
+    id: string;
+    contactId: string;
+    state: string;
+    enrolledAt: string;
+    contact: Contact;
+    emailSends: { id: string; currentStatus: string }[];
+  }[];
 }
 
 export interface DailyQueueRow {
@@ -141,8 +203,24 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
-  getContacts: () => request<Contact[]>("/contacts"),
+  getContacts: (filters: ContactFilters = {}) => {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    const qs = params.toString();
+    return request<{ contacts: Contact[]; total: number }>(`/contacts${qs ? `?${qs}` : ""}`);
+  },
+  getContactIds: (filters: Omit<ContactFilters, "skip" | "take"> = {}) => {
+    const params = new URLSearchParams({ all: "true" });
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== "") params.set(key, String(value));
+    }
+    return request<{ ids: string[] }>(`/contacts?${params.toString()}`);
+  },
+  getContactFilterOptions: () => request<ContactFilterOptions>("/contacts/filter-options"),
   syncSheet: () => request<SyncReport>("/contacts/sync-sheet", { method: "POST" }),
+  deleteContact: (id: string) => request<void>(`/contacts/${id}`, { method: "DELETE" }),
 
   getTemplates: () => request<Template[]>("/templates"),
   createTemplate: (data: TemplateInput) =>
@@ -163,9 +241,9 @@ export const api = {
   resumeCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/resume`, { method: "POST" }),
   archiveCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/archive`, { method: "POST" }),
 
-  addStep: (campaignId: string, data: { templateId: string; delayDays: number; delayHours: number }) =>
+  addStep: (campaignId: string, data: SequenceStepInput) =>
     request<SequenceStep>(`/campaigns/${campaignId}/steps`, { method: "POST", body: JSON.stringify(data) }),
-  updateStep: (stepId: string, data: Partial<{ templateId: string; delayDays: number; delayHours: number }>) =>
+  updateStep: (stepId: string, data: Partial<SequenceStepInput>) =>
     request<SequenceStep>(`/campaigns/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteStep: (stepId: string) => request<void>(`/campaigns/steps/${stepId}`, { method: "DELETE" }),
   reorderSteps: (campaignId: string, stepIds: string[]) =>
@@ -194,6 +272,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ queueIds, action }),
     }),
+
+  getDocuments: () => request<PdfDocument[]>("/documents"),
+  uploadDocument: async (file: File, name?: string): Promise<PdfDocument> => {
+    const form = new FormData();
+    form.append("file", file);
+    if (name) form.append("name", name);
+    const token = getToken();
+    const res = await fetch(`${API_URL}/documents`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      throw new ApiError(res.status, body.error ?? "Upload failed");
+    }
+    return res.json();
+  },
+  renameDocument: (id: string, name: string) =>
+    request<PdfDocument>(`/documents/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+  deleteDocument: (id: string) => request<void>(`/documents/${id}`, { method: "DELETE" }),
+
+  getStepAutomations: (stepId: string) => request<StepAutomation[]>(`/campaigns/steps/${stepId}/automations`),
+  createStepAutomation: (stepId: string, data: StepAutomationInput) =>
+    request<StepAutomation>(`/campaigns/steps/${stepId}/automations`, { method: "POST", body: JSON.stringify(data) }),
+  updateStepAutomation: (automationId: string, data: Partial<StepAutomationInput>) =>
+    request<StepAutomation>(`/campaigns/automations/${automationId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteStepAutomation: (automationId: string) =>
+    request<void>(`/campaigns/automations/${automationId}`, { method: "DELETE" }),
+  markReplied: (emailSendId: string) => request<void>(`/email-sends/${emailSendId}/mark-replied`, { method: "POST" }),
 };
 
 export { ApiError };
