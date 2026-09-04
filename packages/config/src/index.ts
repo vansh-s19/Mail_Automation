@@ -12,6 +12,9 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16, "JWT_SECRET must be at least 16 characters"),
 
   PORT: z.coerce.number().default(4000),
+  // Where the public /unsubscribe link points - must be the API's real
+  // reachable URL once deployed (Railway), not the frontend's.
+  PUBLIC_API_URL: z.string().default("http://localhost:4000"),
 
   AWS_ACCESS_KEY_ID: z.string().optional(),
   AWS_SECRET_ACCESS_KEY: z.string().optional(),

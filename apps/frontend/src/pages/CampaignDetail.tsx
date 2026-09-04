@@ -459,7 +459,10 @@ function ContactPicker({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
 
-  const available = allContacts.filter((c) => !enrolledIds.has(c.id));
+  // Unsubscribed contacts never show up here to begin with - the API also
+  // rejects them defensively, but hiding them is the honest UX (picking one
+  // shouldn't look possible if it's actually not allowed).
+  const available = allContacts.filter((c) => !enrolledIds.has(c.id) && !c.isSuppressed);
   const filtered = available.filter((c) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;

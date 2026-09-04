@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { requireAuth } from "../middleware/auth";
 import { asyncHandler } from "../middleware/asyncHandler";
+import { renderEmailForContact } from "../services/emailRender";
 
 const router = Router();
 
@@ -48,6 +49,20 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   } catch {
     res.status(404).json({ error: "Template not found" });
   }
+}));
+
+// Shows exactly what a real send would contain, unsubscribe link included -
+// useful right now since there's no SES sending yet to see it any other way.
+router.get("/:id/preview/:contactId", asyncHandler(async (req, res) => {
+  const [template, contact] = await Promise.all([
+    prisma.template.findUnique({ where: { id: req.params.id } }),
+    prisma.contact.findUnique({ where: { id: req.params.contactId } }),
+  ]);
+  if (!template) return res.status(404).json({ error: "Template not found" });
+  if (!contact) return res.status(404).json({ error: "Contact not found" });
+
+  const rendered = renderEmailForContact(template, contact);
+  res.json(rendered);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {

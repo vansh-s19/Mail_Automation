@@ -6,6 +6,7 @@ import contactsRoutes from "./routes/contacts";
 import templatesRoutes from "./routes/templates";
 import campaignsRoutes from "./routes/campaigns";
 import dailyQueueRoutes from "./routes/dailyQueue";
+import publicRoutes from "./routes/public";
 
 const app = express();
 
@@ -19,6 +20,7 @@ app.use("/contacts", contactsRoutes);
 app.use("/templates", templatesRoutes);
 app.use("/campaigns", campaignsRoutes);
 app.use("/daily-queue", dailyQueueRoutes);
+app.use("/", publicRoutes);
 
 // Catches anything asyncHandler forwards via next(err), plus sync throws in
 // route handlers - keeps one bad request from crashing the whole process.

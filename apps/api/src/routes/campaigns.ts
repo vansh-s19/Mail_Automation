@@ -282,7 +282,17 @@ router.post("/:id/contacts", asyncHandler(async (req, res) => {
     select: { contactId: true },
   });
   const alreadyEnrolled = new Set(existing.map((e) => e.contactId));
-  const toEnroll = parsed.data.contactIds.filter((id) => !alreadyEnrolled.has(id));
+  const notYetEnrolled = parsed.data.contactIds.filter((id) => !alreadyEnrolled.has(id));
+
+  // Defense in depth: the picker UI hides suppressed/unsubscribed contacts,
+  // but the API shouldn't trust that - re-check here so nothing can enroll
+  // an unsubscribed contact, whether from the UI or a direct API call.
+  const suppressedContacts = await prisma.contact.findMany({
+    where: { id: { in: notYetEnrolled }, isSuppressed: true },
+    select: { id: true },
+  });
+  const suppressedIds = new Set(suppressedContacts.map((c) => c.id));
+  const toEnroll = notYetEnrolled.filter((id) => !suppressedIds.has(id));
 
   if (toEnroll.length > 0) {
     await prisma.campaignContact.createMany({
@@ -295,7 +305,11 @@ router.post("/:id/contacts", asyncHandler(async (req, res) => {
     });
   }
 
-  res.status(201).json({ enrolled: toEnroll.length, alreadyEnrolled: alreadyEnrolled.size });
+  res.status(201).json({
+    enrolled: toEnroll.length,
+    alreadyEnrolled: alreadyEnrolled.size,
+    skippedSuppressed: suppressedIds.size,
+  });
 }));
 
 router.delete("/:id/contacts/:contactId", asyncHandler(async (req, res) => {
