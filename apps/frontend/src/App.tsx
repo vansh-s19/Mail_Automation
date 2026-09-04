@@ -5,6 +5,9 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Contacts from "./pages/Contacts";
 import Templates from "./pages/Templates";
+import Campaigns from "./pages/Campaigns";
+import CampaignDetail from "./pages/CampaignDetail";
+import DailyReview from "./pages/DailyReview";
 import ComingSoon from "./components/ComingSoon";
 
 export default function App() {
@@ -22,15 +25,9 @@ export default function App() {
           >
             <Route path="/" element={<Navigate to="/contacts" replace />} />
             <Route path="/contacts" element={<Contacts />} />
-            <Route
-              path="/campaigns"
-              element={
-                <ComingSoon
-                  title="Campaigns"
-                  note="Campaign + sequence builder is next up — manual contact assignment, configurable step timing, and timezone-aware sending rules."
-                />
-              }
-            />
+            <Route path="/campaigns" element={<Campaigns />} />
+            <Route path="/campaigns/:id" element={<CampaignDetail />} />
+            <Route path="/daily-review" element={<DailyReview />} />
             <Route path="/templates" element={<Templates />} />
             <Route
               path="/analytics"

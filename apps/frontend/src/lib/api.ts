@@ -86,6 +86,55 @@ export interface TemplateInput {
   bodyText?: string;
 }
 
+export interface SendingRules {
+  dailySendCap: number;
+  businessHoursStart: number;
+  businessHoursEnd: number;
+  weekendsEnabled: boolean;
+}
+
+export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
+export interface CampaignSummary {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  sendingRules: SendingRules;
+  createdAt: string;
+  stepCount: number;
+  contactCount: number;
+}
+
+export interface SequenceStep {
+  id: string;
+  campaignId: string;
+  stepOrder: number;
+  templateId: string;
+  delayDays: number;
+  delayHours: number;
+  template: Template;
+}
+
+export interface CampaignDetail {
+  id: string;
+  name: string;
+  status: CampaignStatus;
+  sendingRules: SendingRules;
+  createdAt: string;
+  steps: SequenceStep[];
+  campaignContacts: { id: string; contactId: string; state: string; enrolledAt: string; contact: Contact }[];
+}
+
+export interface DailyQueueRow {
+  id: string;
+  status: "pending_review" | "approved" | "excluded" | "dispatched";
+  targetDate: string;
+  scheduledLocalSendTime: string;
+  contact: { id: string; name: string | null; email: string; company: string | null; resolvedTimezone: string | null };
+  campaign: { id: string; name: string };
+  step: { id: string; stepOrder: number; templateName: string; templateSubject: string };
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ token: string }>("/auth/login", {
@@ -101,6 +150,50 @@ export const api = {
   updateTemplate: (id: string, data: Partial<TemplateInput>) =>
     request<Template>(`/templates/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTemplate: (id: string) => request<void>(`/templates/${id}`, { method: "DELETE" }),
+
+  getCampaigns: () => request<CampaignSummary[]>("/campaigns"),
+  getCampaign: (id: string) => request<CampaignDetail>(`/campaigns/${id}`),
+  createCampaign: (name: string) =>
+    request<CampaignSummary>("/campaigns", { method: "POST", body: JSON.stringify({ name }) }),
+  updateCampaign: (id: string, data: { name?: string; sendingRules?: Partial<SendingRules> }) =>
+    request<CampaignSummary>(`/campaigns/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  duplicateCampaign: (id: string) => request<CampaignDetail>(`/campaigns/${id}/duplicate`, { method: "POST" }),
+  launchCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/launch`, { method: "POST" }),
+  pauseCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/pause`, { method: "POST" }),
+  resumeCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/resume`, { method: "POST" }),
+  archiveCampaign: (id: string) => request<CampaignSummary>(`/campaigns/${id}/archive`, { method: "POST" }),
+
+  addStep: (campaignId: string, data: { templateId: string; delayDays: number; delayHours: number }) =>
+    request<SequenceStep>(`/campaigns/${campaignId}/steps`, { method: "POST", body: JSON.stringify(data) }),
+  updateStep: (stepId: string, data: Partial<{ templateId: string; delayDays: number; delayHours: number }>) =>
+    request<SequenceStep>(`/campaigns/steps/${stepId}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteStep: (stepId: string) => request<void>(`/campaigns/steps/${stepId}`, { method: "DELETE" }),
+  reorderSteps: (campaignId: string, stepIds: string[]) =>
+    request<SequenceStep[]>(`/campaigns/${campaignId}/steps/reorder`, {
+      method: "POST",
+      body: JSON.stringify({ stepIds }),
+    }),
+
+  enrollContacts: (campaignId: string, contactIds: string[]) =>
+    request<{ enrolled: number; alreadyEnrolled: number }>(`/campaigns/${campaignId}/contacts`, {
+      method: "POST",
+      body: JSON.stringify({ contactIds }),
+    }),
+  unenrollContact: (campaignId: string, contactId: string) =>
+    request<void>(`/campaigns/${campaignId}/contacts/${contactId}`, { method: "DELETE" }),
+
+  buildDailyQueue: (date?: string) =>
+    request<{ date: string; added: number; skipped: number }>(
+      `/daily-queue/build${date ? `?date=${date}` : ""}`,
+      { method: "POST" }
+    ),
+  getDailyQueue: (date?: string) =>
+    request<{ date: string; rows: DailyQueueRow[] }>(`/daily-queue${date ? `?date=${date}` : ""}`),
+  bulkQueueAction: (queueIds: string[], action: "approve" | "exclude") =>
+    request<{ updated: number }>("/daily-queue/bulk-action", {
+      method: "POST",
+      body: JSON.stringify({ queueIds, action }),
+    }),
 };
 
 export { ApiError };
