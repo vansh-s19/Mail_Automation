@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { env } from "@mail-automation/config";
 import { loginRateLimit } from "../middleware/rateLimit";
+import { asyncHandler } from "../middleware/asyncHandler";
 
 const router = Router();
 
@@ -13,7 +14,7 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
-router.post("/login", loginRateLimit, async (req, res) => {
+router.post("/login", loginRateLimit, asyncHandler(async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid email or password format" });
@@ -34,6 +35,6 @@ router.post("/login", loginRateLimit, async (req, res) => {
   const token = jwt.sign({ sub: user.id }, env.JWT_SECRET, { expiresIn: "7d" });
 
   res.json({ token });
-});
+}));
 
 export default router;

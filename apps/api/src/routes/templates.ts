@@ -2,21 +2,22 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { requireAuth } from "../middleware/auth";
+import { asyncHandler } from "../middleware/asyncHandler";
 
 const router = Router();
 
 router.use(requireAuth);
 
-router.get("/", async (_req, res) => {
+router.get("/", asyncHandler(async (_req, res) => {
   const templates = await prisma.template.findMany({ orderBy: { createdAt: "desc" } });
   res.json(templates);
-});
+}));
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", asyncHandler(async (req, res) => {
   const template = await prisma.template.findUnique({ where: { id: req.params.id } });
   if (!template) return res.status(404).json({ error: "Template not found" });
   res.json(template);
-});
+}));
 
 const templateSchema = z.object({
   name: z.string().min(1),
@@ -25,18 +26,18 @@ const templateSchema = z.object({
   bodyText: z.string().optional(),
 });
 
-router.post("/", async (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const parsed = templateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid template", details: parsed.error.flatten().fieldErrors });
   }
   const template = await prisma.template.create({ data: parsed.data });
   res.status(201).json(template);
-});
+}));
 
 const templateUpdateSchema = templateSchema.partial();
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", asyncHandler(async (req, res) => {
   const parsed = templateUpdateSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid template", details: parsed.error.flatten().fieldErrors });
@@ -47,9 +48,9 @@ router.patch("/:id", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Template not found" });
   }
-});
+}));
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", asyncHandler(async (req, res) => {
   const usedInStep = await prisma.sequenceStep.findFirst({ where: { templateId: req.params.id } });
   if (usedInStep) {
     return res.status(409).json({ error: "Template is used in a campaign sequence and can't be deleted" });
@@ -60,6 +61,6 @@ router.delete("/:id", async (req, res) => {
   } catch {
     res.status(404).json({ error: "Template not found" });
   }
-});
+}));
 
 export default router;

@@ -2,16 +2,17 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { requireAuth } from "../middleware/auth";
+import { asyncHandler } from "../middleware/asyncHandler";
 import { syncContactsFromSheet } from "../services/sheetsSync";
 
 const router = Router();
 
 router.use(requireAuth);
 
-router.get("/", async (req, res) => {
+router.get("/", asyncHandler(async (req, res) => {
   const contacts = await prisma.contact.findMany({ orderBy: { createdAt: "desc" }, take: 200 });
   res.json(contacts);
-});
+}));
 
 const patchSchema = z.object({
   name: z.string().optional(),
@@ -21,21 +22,24 @@ const patchSchema = z.object({
   isSuppressed: z.boolean().optional(),
 });
 
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", asyncHandler(async (req, res) => {
   const parsed = patchSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: "Invalid update payload" });
   }
 
-  const contact = await prisma.contact.update({
-    where: { id: req.params.id },
-    data: parsed.data,
-  });
+  try {
+    const contact = await prisma.contact.update({
+      where: { id: req.params.id },
+      data: parsed.data,
+    });
+    res.json(contact);
+  } catch {
+    res.status(404).json({ error: "Contact not found" });
+  }
+}));
 
-  res.json(contact);
-});
-
-router.post("/sync-sheet", async (_req, res) => {
+router.post("/sync-sheet", asyncHandler(async (_req, res) => {
   try {
     const report = await syncContactsFromSheet();
     res.json(report);
@@ -43,6 +47,6 @@ router.post("/sync-sheet", async (_req, res) => {
     const message = err instanceof Error ? err.message : "Sheet sync failed";
     res.status(502).json({ error: message });
   }
-});
+}));
 
 export default router;
