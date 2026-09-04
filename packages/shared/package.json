@@ -4,6 +4,7 @@
   "private": true,
   "main": "src/index.ts",
   "dependencies": {
-    "city-timezones": "^1.2.1"
+    "city-timezones": "^1.2.1",
+    "luxon": "^3.7.2"
   }
 }

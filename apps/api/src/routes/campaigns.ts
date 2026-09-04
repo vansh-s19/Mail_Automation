@@ -131,6 +131,35 @@ router.post("/:id/:action(launch|pause|resume|archive)", asyncHandler(async (req
   res.json(campaign);
 }));
 
+router.post("/:id/duplicate", asyncHandler(async (req, res) => {
+  const original = await prisma.campaign.findUnique({
+    where: { id: req.params.id },
+    include: { steps: { orderBy: { stepOrder: "asc" } } },
+  });
+  if (!original) return res.status(404).json({ error: "Campaign not found" });
+
+  // Sequence steps carry over (that's the point of duplicating); contacts don't -
+  // enrollment stays a deliberate manual choice per campaign, not copied automatically.
+  const copy = await prisma.campaign.create({
+    data: {
+      name: `${original.name} (Copy)`,
+      status: "draft",
+      sendingRules: original.sendingRules as Prisma.InputJsonValue,
+      steps: {
+        create: original.steps.map((s) => ({
+          templateId: s.templateId,
+          delayDays: s.delayDays,
+          delayHours: s.delayHours,
+          stepOrder: s.stepOrder,
+        })),
+      },
+    },
+    include: { steps: { orderBy: { stepOrder: "asc" }, include: { template: true } } },
+  });
+
+  res.status(201).json(copy);
+}));
+
 // ---- Sequence steps ----
 
 const stepSchema = z.object({
