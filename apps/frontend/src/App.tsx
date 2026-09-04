@@ -8,6 +8,7 @@ import Templates from "./pages/Templates";
 import Campaigns from "./pages/Campaigns";
 import CampaignDetail from "./pages/CampaignDetail";
 import DailyReview from "./pages/DailyReview";
+import Documents from "./pages/Documents";
 import ComingSoon from "./components/ComingSoon";
 
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="/campaigns/:id" element={<CampaignDetail />} />
             <Route path="/daily-review" element={<DailyReview />} />
             <Route path="/templates" element={<Templates />} />
+            <Route path="/documents" element={<Documents />} />
             <Route
               path="/analytics"
               element={<ComingSoon title="Analytics" note="Populates once campaigns start sending." />}

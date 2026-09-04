@@ -1,13 +1,14 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/AuthContext";
 import Logo from "./Logo";
-import { UsersIcon, SendIcon, DocumentIcon, ChartIcon, LogoutIcon, CalendarCheckIcon } from "./icons";
+import { UsersIcon, SendIcon, DocumentIcon, ChartIcon, LogoutIcon, CalendarCheckIcon, PaperclipIcon } from "./icons";
 
 const navItems = [
   { to: "/contacts", label: "Contacts", icon: UsersIcon },
   { to: "/campaigns", label: "Campaigns", icon: SendIcon },
   { to: "/daily-review", label: "Daily Review", icon: CalendarCheckIcon },
   { to: "/templates", label: "Templates", icon: DocumentIcon },
+  { to: "/documents", label: "Documents", icon: PaperclipIcon },
   { to: "/analytics", label: "Analytics", icon: ChartIcon },
 ];
 

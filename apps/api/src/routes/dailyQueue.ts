@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "@mail-automation/db";
 import { requireAuth } from "../middleware/auth";
 import { asyncHandler } from "../middleware/asyncHandler";
-import { buildDailyQueue, getDailyQueue } from "../services/dailyQueue";
+import { buildDailyQueue, getDailyQueue, approveQueueRows } from "../services/dailyQueue";
 
 const router = Router();
 
@@ -36,11 +36,14 @@ router.post("/bulk-action", asyncHandler(async (req, res) => {
     return res.status(400).json({ error: "Invalid bulk action payload" });
   }
 
-  const status = parsed.data.action === "approve" ? "approved" : "excluded";
+  if (parsed.data.action === "approve") {
+    const result = await approveQueueRows(parsed.data.queueIds);
+    return res.json({ updated: result.approved });
+  }
 
   const result = await prisma.dailySendQueue.updateMany({
     where: { id: { in: parsed.data.queueIds }, status: "pending_review" },
-    data: { status },
+    data: { status: "excluded" },
   });
 
   res.json({ updated: result.count });

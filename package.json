@@ -1,6 +1,9 @@
 {
   "name": "mail-automation",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "apps/*",
     "packages/*"
@@ -9,14 +12,17 @@
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:worker": "npm run dev --workspace=apps/worker",
     "build": "npm run build --workspaces --if-present",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "prisma:generate": "prisma generate --schema=prisma/schema.prisma",
     "prisma:migrate": "prisma migrate dev --schema=prisma/schema.prisma",
-    "prisma:seed": "tsx prisma/seed.ts"
+    "prisma:deploy": "prisma migrate deploy --schema=prisma/schema.prisma",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "start": "sh scripts/start.sh"
   },
   "devDependencies": {
     "prisma": "^5.20.0",
-    "typescript": "^5.6.0",
-    "tsx": "^4.19.1"
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.0"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

@@ -1,6 +1,7 @@
 import { prisma } from "@mail-automation/db";
 import { addLocalDays, localTimeToUtc, isWeekend } from "@mail-automation/shared";
 import { env } from "@mail-automation/config";
+import { enqueueSend } from "@mail-automation/queue";
 
 interface SendingRules {
   dailySendCap: number;
@@ -27,6 +28,18 @@ export async function buildDailyQueue(dateISO: string): Promise<{ added: number;
 
   for (const campaign of activeCampaigns) {
     const rules = campaign.sendingRules as unknown as SendingRules;
+
+    // dailySendCap is a per-campaign, per-day volume limit - count what's
+    // already queued/approved for this date (excluded rows don't count, they
+    // were explicitly taken off the day's volume) and only room up to the cap.
+    const alreadyQueued = await prisma.dailySendQueue.count({
+      where: {
+        sequenceStep: { campaignId: campaign.id },
+        targetDate: new Date(dateISO),
+        status: { not: "excluded" },
+      },
+    });
+    let remainingCapacity = Math.max(0, rules.dailySendCap - alreadyQueued);
 
     const campaignContacts = await prisma.campaignContact.findMany({
       where: { campaignId: campaign.id, state: "pending" },
@@ -81,6 +94,13 @@ export async function buildDailyQueue(dateISO: string): Promise<{ added: number;
         continue;
       }
 
+      if (remainingCapacity <= 0) {
+        // Cap reached for this campaign/date - they stay due and roll into
+        // tomorrow's build instead of being dropped.
+        skipped += 1;
+        continue;
+      }
+
       await prisma.dailySendQueue.create({
         data: {
           campaignContactId: cc.id,
@@ -89,6 +109,7 @@ export async function buildDailyQueue(dateISO: string): Promise<{ added: number;
           status: "pending_review",
         },
       });
+      remainingCapacity -= 1;
       added += 1;
     }
   }
@@ -119,7 +140,8 @@ export async function getDailyQueue(dateISO: string): Promise<DailyQueueRow[]> {
   return rows.map((row) => {
     const timeZone = row.campaignContact.contact.resolvedTimezone ?? env.DEFAULT_TIMEZONE_FALLBACK;
     const rules = row.campaignContact.campaign.sendingRules as unknown as SendingRules;
-    const scheduledLocalSendTime = localTimeToUtc(dateISO, rules.businessHoursStart, timeZone);
+    const sendHour = row.sequenceStep.sendHour ?? rules.businessHoursStart;
+    const scheduledLocalSendTime = localTimeToUtc(dateISO, sendHour, timeZone);
 
     return {
       id: row.id,
@@ -142,4 +164,58 @@ export async function getDailyQueue(dateISO: string): Promise<DailyQueueRow[]> {
       },
     };
   });
+}
+
+/**
+ * Approves pending_review rows: creates the `EmailSend` row that is the
+ * worker's hard duplicate-send guard (unique on campaignContactId+stepId) and
+ * enqueues the actual SES send, delayed until that contact's computed local
+ * send time. Deliberately not done at daily-queue-build time - a queue row
+ * can sit pending_review for a while before a human approves it.
+ */
+export async function approveQueueRows(queueIds: string[]): Promise<{ approved: number }> {
+  const rows = await prisma.dailySendQueue.findMany({
+    where: { id: { in: queueIds }, status: "pending_review" },
+    include: {
+      campaignContact: { include: { contact: true, campaign: true } },
+      sequenceStep: true,
+    },
+  });
+
+  let approved = 0;
+
+  for (const row of rows) {
+    if (row.campaignContact.contact.isSuppressed) {
+      await prisma.dailySendQueue.update({ where: { id: row.id }, data: { status: "excluded" } });
+      continue;
+    }
+
+    const dateISO = row.targetDate.toISOString().slice(0, 10);
+    const timeZone = row.campaignContact.contact.resolvedTimezone ?? env.DEFAULT_TIMEZONE_FALLBACK;
+    const rules = row.campaignContact.campaign.sendingRules as unknown as SendingRules;
+    const sendHour = row.sequenceStep.sendHour ?? rules.businessHoursStart;
+    const scheduledFor = localTimeToUtc(dateISO, sendHour, timeZone);
+
+    const emailSend = await prisma.emailSend.upsert({
+      where: {
+        campaignContactId_sequenceStepId: {
+          campaignContactId: row.campaignContactId,
+          sequenceStepId: row.sequenceStepId,
+        },
+      },
+      update: {},
+      create: {
+        campaignContactId: row.campaignContactId,
+        sequenceStepId: row.sequenceStepId,
+        scheduledFor,
+        currentStatus: "queued",
+      },
+    });
+
+    await enqueueSend(emailSend.id, scheduledFor.getTime() - Date.now());
+    await prisma.dailySendQueue.update({ where: { id: row.id }, data: { status: "approved" } });
+    approved += 1;
+  }
+
+  return { approved };
 }
