@@ -40,6 +40,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     throw new ApiError(res.status, body.error ?? "Request failed");
   }
 
+  if (res.status === 204) {
+    return undefined as T;
+  }
+
   return res.json();
 }
 
@@ -66,6 +70,22 @@ export interface SyncReport {
   total: number;
 }
 
+export interface Template {
+  id: string;
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string | null;
+  createdAt: string;
+}
+
+export interface TemplateInput {
+  name: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText?: string;
+}
+
 export const api = {
   login: (email: string, password: string) =>
     request<{ token: string }>("/auth/login", {
@@ -74,6 +94,13 @@ export const api = {
     }),
   getContacts: () => request<Contact[]>("/contacts"),
   syncSheet: () => request<SyncReport>("/contacts/sync-sheet", { method: "POST" }),
+
+  getTemplates: () => request<Template[]>("/templates"),
+  createTemplate: (data: TemplateInput) =>
+    request<Template>("/templates", { method: "POST", body: JSON.stringify(data) }),
+  updateTemplate: (id: string, data: Partial<TemplateInput>) =>
+    request<Template>(`/templates/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  deleteTemplate: (id: string) => request<void>(`/templates/${id}`, { method: "DELETE" }),
 };
 
 export { ApiError };

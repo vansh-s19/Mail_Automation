@@ -4,6 +4,7 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Contacts from "./pages/Contacts";
+import Templates from "./pages/Templates";
 import ComingSoon from "./components/ComingSoon";
 
 export default function App() {
@@ -26,19 +27,11 @@ export default function App() {
               element={
                 <ComingSoon
                   title="Campaigns"
-                  note="Waiting on sequence details and sending rules from the client before this is built out."
+                  note="Campaign + sequence builder is next up — manual contact assignment, configurable step timing, and timezone-aware sending rules."
                 />
               }
             />
-            <Route
-              path="/templates"
-              element={
-                <ComingSoon
-                  title="Templates"
-                  note="Waiting on real subject lines and body copy from the client before this is built out."
-                />
-              }
-            />
+            <Route path="/templates" element={<Templates />} />
             <Route
               path="/analytics"
               element={<ComingSoon title="Analytics" note="Populates once campaigns start sending." />}
